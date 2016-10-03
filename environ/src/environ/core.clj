@@ -61,14 +61,6 @@
     (when (.exists env-file)
       (edn/read-string (slurp env-file)))))
 
-(defonce ^{:doc "A map of environment variables."}
-  env
-  (merge
-   (read-env-file ".lein-env")
-   (read-env-file (io/resource ".boot-env"))
-   (read-configs (System/getenv))
-   (read-configs (System/getProperties))))
-
 ;; API
 
 (s/fdef defenv
@@ -94,6 +86,22 @@
 (defn load-env! [source]
   (swap! env-map #(merge % source))
   (validate!))
+
+(defn- read-main-file []
+  (some-> (System/getenv "ENVIRON__CORE___FILE")
+          io/resource
+          read-env-file))
+
+(defn init! []
+  (load-env! (merge (read-env-file ".lein-env")
+                    (read-env-file (io/resource ".boot-env"))
+                    (read-main-file)
+                    (read-configs (System/getenv))
+                    (read-configs (System/getProperties)))))
+
+(defn env
+  ([k] (get @env-map k))
+  ([k default] (get @env-map k default)))
 
 (comment
 
