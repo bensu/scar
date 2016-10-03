@@ -1,5 +1,55 @@
 # Environ
 
+## Rationale
+
+I've happily used [environ](http://github.com/weavejester/environ) for years and it provides
+a nice API to deal with config and environment variables. It is based on the
+[Twelve-Factor App's](https://12factor.net/config) recommendation on Environment Variables.
+Lately I've hit some problems that are hard to solve with environ and this fork addresses those.
+[XXX] is different from environ in the following ways:
+
+1. Config checked into git
+2. Arbitrary edn values as config (not just strings)
+3. Fully qualified names for config vars
+4. Type checking
+5. Temporary stubbing for testing
+6. Uberjar support
+
+### 1. Config checked into git
+
+We can start by distinguishing between config variables that you want to keep secret from those
+that you don't care. For example, your AWS API key vs the HTTP server's port. I don't recommend
+checking any API keys in git but I do want to keep as much as I can in there. Including the
+common deployment configs. See [Secrets] for how do we handle secrets.
+
+### 2. Arbitrary edn values
+
+I'm tired of casting ports to `Integer` and parsing out jdbc connection strings when they could
+be maps that are easier to read and edit.
+
+### 3. Fully qualified names for config vars
+
+Because there are many `:port`s and there are many `:db-url`s. (Also because `clojure.spec`
+requires it).
+
+### 4. Type checking
+
+If the `:port` is not an `integer?` I don't even want the program to start.
+
+### 5. Temporary stubbing for testing
+
+During one test run (i.e. `lein test`) it might be interesting to test several values for some
+type of config variable. For example, if some environments should not call a certain API it might
+be useful to wrap some tests with `::call-api? false` or `::call-api? true` to test the
+underlying implementation.
+
+### 6. Uberjar
+
+environ loads all the config vars once at startup. This is problematic when using uberjars
+since any `aot` namespaces (like `environ.core`)
+
+## Behavior
+
 Environ is a Clojure library for managing environment settings from a
 number of different sources. It works well for applications following
 the [12 Factor App](http://12factor.net/) pattern.
