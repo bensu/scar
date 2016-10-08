@@ -42,4 +42,8 @@
   (testing "with-env also type checks"
     (is (thrown? Exception (with-env [::vector []
                                       ::string 1]
-                             (is (= 1 (env ::string))))))))
+                             (is (= 1 (env ::string)))))))
+  (testing "with-env can take bindings"
+    (let [a 3]
+      (with-env [::int a]
+        (is (= 3 (env ::int)))))))

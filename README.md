@@ -43,6 +43,11 @@ type of config variable. For example, if some environments should not call a cer
 be useful to wrap some tests with `::call-api? false` or `::call-api? true` to test the
 underlying implementation.
 
+```
+(with-env [::port 80]
+  (start-server (env ::port)))
+```
+
 ### 6. Uberjar
 
 environ loads all the config vars once at startup. This is problematic when using uberjars
