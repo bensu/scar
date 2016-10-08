@@ -19,9 +19,8 @@
   ::uuid uuid?)
 
 (deftest test-env
-  (binding [env/*default-file* "test/test-environment.edn"]
-    (env/init!))
-  (testing "from the .edn file"
+  (env/init!)
+  (testing "from the .edn file passed as an ENV"
     (is (= "a" (env ::string))))
   (testing "from the env vars"
     (is (= 1 (env ::int)) "Basic edn values work")

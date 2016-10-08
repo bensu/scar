@@ -1,4 +1,5 @@
 #!/bin/sh
+ENVIRON__CORE___FILE="test/test-environment.edn"                           \
 ENVIRON__CORE_TEST___INT=1                                                 \
 ENVIRON__CORE_TEST___MAP={}                                                \
 ENVIRON__CORE_TEST___VECTOR="[1 2 \"abc\"]"                                \
