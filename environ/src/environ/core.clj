@@ -99,7 +99,6 @@
   (swap! env-map #(merge % source))
   (validate!))
 
-
 (defn init! []
   (load-env! (merge (read-env-file ".lein-env")
                     (read-env-file (io/resource ".boot-env"))
@@ -107,9 +106,23 @@
                     (read-configs (System/getenv))
                     (read-configs (System/getProperties)))))
 
+(def ^:dynamic *temp-env* {})
+
+(s/fdef with-env
+        :args (s/cat :bindings (s/and vector? #(even? (count %))
+                                      (s/* (s/or :keyword keyword? :value any?)))
+                     :body (s/* any?))
+        :ret any?)
+
+(defmacro with-env [bindings & body]
+  `(binding [*temp-env* (merge *temp-env* ~(into {} (map vec (partition 2 bindings))))]
+     ~@body))
+
 (defn env
-  ([k] (get @env-map k))
-  ([k default] (get @env-map k default)))
+  ([k] (env k nil))
+  ([k default] (or (get *temp-env* k)
+                   (get @env-map k)
+                   default)))
 
 (comment
 

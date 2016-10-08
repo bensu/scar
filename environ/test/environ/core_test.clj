@@ -1,7 +1,7 @@
 (ns environ.core-test
   (:require [clojure.test :refer :all]
             [clojure.java.io :as io]
-            [environ.core :as env :refer [env defenv]]))
+            [environ.core :as env :refer [env defenv with-env]]))
 
 (deftest keywordize
   (are [x y] (= y (env/keywordize x))
@@ -18,7 +18,7 @@
   ::set set?
   ::uuid uuid?)
 
-(deftest test-env
+(deftest load-env
   (env/init!)
   (testing "from the .edn file passed as an ENV"
     (is (= "a" (env ::string))))
@@ -31,3 +31,11 @@
     (is (= "12345" (env ::number-string)) "Strings that could be edn/read work"))
   (testing "from project.clj"
     (is (= :a (env ::keyword)))))
+
+(deftest test-with-env
+  (env/init!)
+  (testing "I can change some values for testing purposes"
+    (with-env [::string "a new string"
+               ::vector []]
+      (is (= "a new string" (env ::string)))
+      (is (= [] (env ::vector))))))
