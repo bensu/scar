@@ -9,11 +9,11 @@ Lately I've hit some problems that are hard to solve with environ and this fork 
 [XXX] is different from environ in the following ways:
 
 1. Config checked into git
-2. Arbitrary edn values as config (not just strings)
+2. Spec checking
 3. Fully qualified names for config vars
-4. Type checking
+4. Arbitrary edn values as config (not just strings)
 5. Temporary stubbing for testing
-6. Uberjar support
+6. Jar support
 
 ### 1. Config checked into git
 
@@ -22,36 +22,107 @@ that you don't care. For example, your AWS API key vs the HTTP server's port. I 
 checking any API keys in git but I do want to keep as much as I can in there. Including the
 common deployment configs. See [Secrets] for how do we handle secrets.
 
-### 2. Arbitrary edn values
+For development and the repl you can put your envs in `project.clj` or `build.boot` just like
+with environ:
 
-I'm tired of casting ports to `Integer` and parsing out jdbc connection strings when they could
-be maps that are easier to read and edit.
+```clj
+project.clj
+{:dev {:app.server/port 80
+       :app.db/url "postgres://username:password@host/database"}}
+```
+
+For jars you can use standalone edn files (See Jar Support)
+
+### 2. Spec checking
+
+Each namespace defines specs for the  environment variables it will at run time with `defenv`.
+When the app is initialized, they are all checked, and an exception is thrown if any is
+missing or doesn't conform to the spec:
+
+```
+;; resources/prod/config.edn
+{:app.server/port nil
+ :app.server/host "www.app.com"}
+
+;; app.server
+(defenv
+  ::port int?
+  ::host string?)
+
+(defn start-server [host port]
+  ...)
+
+(defn -main []
+  (env/init!)
+  (app.server/start! (env :app.server/host) (env :app.server/port)))
+
+> (-main)
+=> Exception :app.server/port does not conform to spec int?
+```
 
 ### 3. Fully qualified names for config vars
 
-Because there are many `:port`s and there are many `:db-url`s. (Also because `clojure.spec`
-requires it).
+Because there are could be many `:port`s or `:db-url`s. (But mostly because
+`clojure.spec` requires it).
 
-### 4. Type checking
+### 4. Arbitrary edn values
 
-If the `:port` is not an `integer?` I don't even want the program to start.
+Config vars read from edn files, `project.clj`, or `build.boot` are read as edn.
+Environment variables are first read as strings, and only read with `edn/read-string`
+if they don't conform to their spec.
+
+Examples:
+
+```
+(in-ns 'app.server)
+(defenv
+  ::http-port int?
+  ::zip string?)
+
+APP__SERVER__HTTP_PORT=3005    # (env :app.server/http-port) => 3005 as int
+APP__SERVER__HTTP_PORT="3005"  # (env :app.server/http-port) => 3005 as int
+
+APP__SERVER__ZIP=94114         # (env :app.server/zip) => "94144" as string
+APP__SERVER__ZIP="94114"       # (env :app.server/zip) => "94144" as string
+```
+
+This prevents us from having to cast HTTP ports to `Integer.`.
 
 ### 5. Temporary stubbing for testing
 
 During one test run (i.e. `lein test`) it might be interesting to test several values for some
-type of config variable. For example, if some environments should not call a certain API it might
-be useful to wrap some tests with `::call-api? false` or `::call-api? true` to test the
+type of config variable. For example, if some environments should not call a certain API it
+might be useful to wrap some tests with `::call-api? false` or `::call-api? true` to test the
 underlying implementation.
 
 ```
-(with-env [::port 80]
-  (start-server (env ::port)))
+> (env ::port)
+;; => 443
+
+> (with-env [::port 80]
+    (start-server (env ::port)))
+;; => 80
 ```
 
-### 6. Uberjar
+### 6. Jar Support
 
 environ loads all the config vars once at startup. This is problematic when using uberjars
 since any `aot` namespaces (like `environ.core`)
+
+For jars in production, you can use standalone edn files:
+
+```clj
+;; resources/prod/config.edn
+{:app.server/port 80
+ :app.db/url "postgres://username:password@host/database"}}
+```
+
+and then start your jar with
+
+```sh
+ENVIRON__CORE___FILE="prod/config.edn" \
+java -jar targe/app-standalone.jar
+```
 
 ## Behavior
 
@@ -102,7 +173,6 @@ Then require the environ boot task.
 ```clojure
 (require '[environ.boot :refer [environ]])
 ```
-
 
 ## Usage
 
