@@ -1,39 +1,34 @@
 (ns environ.core-test
   (:require [clojure.test :refer :all]
-            [clojure.java.io :as io]))
+            [clojure.java.io :as io]
+            [environ.core :as env :refer [env defenv]]))
 
-(defn refresh-ns []
-  (remove-ns 'environ.core)
-  (dosync (alter @#'clojure.core/*loaded-libs* disj 'environ.core))
-  (require 'environ.core))
+(deftest keywordize
+  (are [x y] (= y (env/keywordize x))
+    "ENVIRON__CORE_TEST___INT" ::int
+    "ENVIRON__CORE_TEST___STRING" ::string))
 
-(defn refresh-env []
-  (refresh-ns)
-  (var-get (find-var 'environ.core/env)))
+(defenv
+  ::int integer?
+  ::string string?
+  ::number-string string?
+  ::keyword keyword?
+  ::map map?
+  ::vector vector?
+  ::set set?
+  ::uuid uuid?)
 
 (deftest test-env
-  (.delete (io/file ".lein-env"))
-  (testing "env variables"
-    (let [env (refresh-env)]
-      (is (= (:user env) (System/getenv "USER")))
-      (is (= (:java-arch env) (System/getenv "JAVA_ARCH")))))
-  (testing "system properties"
-    (let [env (refresh-env)]
-      (is (= (:user-name env) (System/getProperty "user.name")))
-      (is (= (:user-country env) (System/getProperty "user.country")))))
-  (testing "env file"
-    (spit ".lein-env" (prn-str {:foo "bar"}))
-    (let [env (refresh-env)]
-      (is (= (:foo env) "bar"))))
-  (testing "env file with irregular keys"
-    (spit ".lein-env" (prn-str {:foo.bar "baz"}))
-    (let [env (refresh-env)]
-      (is (= (:foo-bar env) "baz"))))
-  (testing "env file with irregular keys"
-    (spit ".lein-env" "{:foo #=(str \"bar\" \"baz\")}")
-    (is (thrown? RuntimeException (refresh-env))))
-  (testing "env file with non-string values"
-    (spit ".lein-env" (prn-str {:foo 1 :bar :baz}))
-    (let [env (refresh-env)]
-      (is (= (:foo env) "1"))
-      (is (= (:bar env) ":baz")))))
+  (binding [env/*default-file* "test/test-environment.edn"]
+    (env/init!))
+  (testing "from the .edn file"
+    (is (= "a" (env ::string))))
+  (testing "from the env vars"
+    (is (= 1 (env ::int)) "Basic edn values work")
+    (is (= {} (env ::map)) "Data literals work")
+    (is (= [1 2 "abc"] (env ::vector)) "Compound edn values work")
+    (is (= #{"a set with strings"} (env ::set)) "Non escaped strings work")
+    (is (= (env ::uuid) #uuid "10e4193c-d374-4d20-9914-b03af25a1adc") "Reader tags work")
+    (is (= "12345" (env ::number-string)) "Strings that could be edn/read work"))
+  (testing "from project.clj"
+    (is (= :a (env ::keyword)))))

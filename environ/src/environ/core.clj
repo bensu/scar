@@ -33,6 +33,11 @@
     (edn/read-string s)
     (catch Throwable _ s)))
 
+(defn- read-value [spec str]
+  (if-not (s/invalid? (s/conform spec str))
+    str
+    (maybe-read-edn str)))
+
 ;; maybe (str/replace #"." "-") for Java System properties
 (defn keywordize [s]
   (-> s
@@ -51,7 +56,7 @@
        (map (fn [[k v]]
               (let [k' (keywordize k)]
                 (when-let [spec (get @env-specs k')]
-                  (let [v' (maybe-read-edn v)]
+                  (let [v' (read-value spec v)]
                     (validate-spec! k' v')
                     [k' v'])))))
        (into {})))
@@ -60,6 +65,13 @@
   (when-let [env-file (io/file f)]
     (when (.exists env-file)
       (edn/read-string (slurp env-file)))))
+
+(def ^:dynamic *default-file* "environ.edn")
+
+(defn- read-main-file []
+  (some-> (or (System/getenv "ENVIRON__CORE___FILE") *default-file*)
+          io/resource
+          read-env-file))
 
 ;; API
 
@@ -87,10 +99,6 @@
   (swap! env-map #(merge % source))
   (validate!))
 
-(defn- read-main-file []
-  (some-> (System/getenv "ENVIRON__CORE___FILE")
-          io/resource
-          read-env-file))
 
 (defn init! []
   (load-env! (merge (read-env-file ".lein-env")
