@@ -38,4 +38,8 @@
     (with-env [::string "a new string"
                ::vector []]
       (is (= "a new string" (env ::string)))
-      (is (= [] (env ::vector))))))
+      (is (= [] (env ::vector)))))
+  (testing "with-env also type checks"
+    (is (thrown? Exception (with-env [::vector []
+                                      ::string 1]
+                             (is (= 1 (env ::string))))))))

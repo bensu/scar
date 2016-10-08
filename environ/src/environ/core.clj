@@ -90,9 +90,17 @@
 
 (defonce env-map (atom {}))
 
+(def ^:dynamic *temp-env* {})
+
+(defn env
+  ([k] (env k nil))
+  ([k default] (or (get *temp-env* k)
+                   (get @env-map k)
+                   default)))
+
 (defn validate! []
   (doseq [k @env-specs]
-    (validate-spec! k (get @env-map k))))
+    (validate-spec! k (env k))))
 
 ;; TODO: add meta for source name for nice exception messages
 (defn load-env! [source]
@@ -106,7 +114,6 @@
                     (read-configs (System/getenv))
                     (read-configs (System/getProperties)))))
 
-(def ^:dynamic *temp-env* {})
 
 (s/fdef with-env
         :args (s/cat :bindings (s/and vector? #(even? (count %))
@@ -116,13 +123,8 @@
 
 (defmacro with-env [bindings & body]
   `(binding [*temp-env* (merge *temp-env* ~(into {} (map vec (partition 2 bindings))))]
+     (validate!)
      ~@body))
-
-(defn env
-  ([k] (env k nil))
-  ([k default] (or (get *temp-env* k)
-                   (get @env-map k)
-                   default)))
 
 (comment
 
