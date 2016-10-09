@@ -10,17 +10,6 @@
       (str/replace "." "-")
       (keyword)))
 
-(defn- sanitize-key [k]
-  (let [s (keywordize (name k))]
-    (if-not (= k s) (println "Warning: environ key" k "has been corrected to" s))
-    s))
-
-(defn- sanitize-val [k v]
-  (if (string? v)
-    v
-    (do (println "Warning: environ value" (pr-str v) "for key" k "has been cast to string")
-        (str v))))
-
 (defonce env-specs (atom #{}))
 
 (defn- maybe-keyword [s]
@@ -50,11 +39,6 @@
 (defn- validate-spec [k v]
   (when (s/invalid? (s/conform k v))
     (s/explain-str k v)))
-
-(defn- validate-spec! [k v]
-  (some-> (validate-spec k v)
-          (ex-info {:key k :val v})
-          throw ))
 
 (defn- read-configs [source]
   (->> source
