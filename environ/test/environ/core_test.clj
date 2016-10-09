@@ -55,3 +55,17 @@
     (let [a 3]
       (with-env [::int a]
         (is (= 3 (env ::int)))))))
+
+(deftest good-errors
+  (testing "spec checking throws useful errors"
+    (testing "when using init!"
+      (defenv ::int set?)
+      (is (thrown-with-msg? Exception #"int" (env/init!)))
+      ;; restore defenv
+      (defenv ::int integer?)
+      (env/init!))
+    (testing "when using with-env"
+      (is (thrown-with-msg? Exception #"integer(.|\n)*string"
+                            (with-env [::string 1
+                                       ::int "a"]
+                              (env ::string)))))))

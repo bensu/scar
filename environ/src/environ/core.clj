@@ -47,18 +47,21 @@
       (str/replace #"_" "-")
       maybe-keyword))
 
-(defn- validate-spec! [k v]
+(defn- validate-spec [k v]
   (when (s/invalid? (s/conform k v))
-    (throw (ex-info (s/explain-str k v) {:key k :val v}))))
+    (s/explain-str k v)))
+
+(defn- validate-spec! [k v]
+  (some-> (validate-spec k v)
+          (ex-info {:key k :val v})
+          throw ))
 
 (defn- read-configs [source]
   (->> source
        (map (fn [[k v]]
               (let [k' (keywordize k)]
                 (when-let [spec (get @env-specs k')]
-                  (let [v' (read-value spec v)]
-                    (validate-spec! k' v')
-                    [k' v'])))))
+                  [k' (read-value spec v)]))))
        (into {})))
 
 (defn- read-env-file [f]
@@ -99,8 +102,16 @@
                    default)))
 
 (defn validate! []
-  (doseq [k @env-specs]
-    (validate-spec! k (env k))))
+  (when-let [errors (->> @env-specs
+                         (map #(when-let [error (validate-spec % (env %))]
+                                 {:key %
+                                  :value (env %)
+                                  :error error}))
+                         (remove nil?)
+                         seq)]
+    (let [msg (format "The following envs didn't conform to their expected values:\n\n\t%s\n"
+                      (str/join "\n\t" (map :error errors)))]
+      (throw (ex-info msg {:errors errors})))))
 
 ;; TODO: add meta for source name for nice exception messages
 (defn load-env! [source]
