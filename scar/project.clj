@@ -6,4 +6,4 @@
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[org.clojure/clojure "1.9.0-alpha12"]]
   :plugins [[lein-environ "1.1.0"]]
-  :profiles {:test {:env {:environ.core-test/keyword :a}}})
+  :profiles {:test {:env {:scar.core-test/keyword :a}}})

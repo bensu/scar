@@ -69,10 +69,8 @@
     (when (.exists env-file)
       (edn/read-string (slurp env-file)))))
 
-(def ^:dynamic *default-file* "environ.edn")
-
 (defn- read-main-file []
-  (some-> (or (System/getenv "ENVIRON__CORE___FILE") *default-file*)
+  (some-> (System/getenv "SCAR__CORE___FILE")
           io/resource
           read-env-file))
 

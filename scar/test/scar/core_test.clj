@@ -1,13 +1,13 @@
 (ns scar.core-test
   (:require [clojure.test :refer :all]
             [clojure.java.io :as io]
-            [scar.core :as env :refer [env defenv with-env]]
-            [clojure.spec :as s]))
+            [clojure.spec :as s]
+            [scar.core :as env :refer [env defenv with-env]]))
 
 (deftest keywordize
   (are [x y] (= y (env/keywordize x))
-    "ENVIRON__CORE_TEST___INT" ::int
-    "ENVIRON__CORE_TEST___STRING" ::string))
+    "SCAR__CORE_TEST___INT" ::int
+    "SCAR__CORE_TEST___STRING" ::string))
 
 (deftest defenv-checks-args
   (testing "defenv checks its arguments"
@@ -57,7 +57,7 @@
         (is (= 3 (env ::int)))))))
 
 (deftest good-errors
-  (testing "spec checking throws useful errors"
+  (testing "spec checking throws useful errors that include the source"
     (testing "when using init!"
       (defenv ::int set?)
       (is (thrown-with-msg? Exception #"int" (env/init!)))
