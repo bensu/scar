@@ -17,8 +17,8 @@ those. scar is different from environ in the following ways:
 
 1. Config checked into git
 2. Spec checking
-3. Fully qualified names for config vars
-4. Arbitrary edn values as config (not just strings)
+3. Fully qualified names for configs
+4. Arbitrary edn values as configs (not just strings)
 5. Temporary stubbing for testing
 6. Jar support
 
@@ -38,7 +38,7 @@ with environ:
 ```
 
 For jars and multiple deploy environments you can use standalone edn resources and
-check them into git (See Jar Support).
+check them into git without relying so much on envars (see [Jar Support](#3-jar-support)).
 
 ### 2. Spec checking
 
@@ -58,7 +58,7 @@ exception is thrown if any config is missing or doesn't conform to the spec:
 
 (defn -main []
   (env/init!)
-  (start-server! (env :app.server/host) (env :app.server/port)))
+  (start-server! (env ::host) (env ::port)))
 
 > (-main)
 => ExceptionInfo The following envs didn't conform to their expected values:
@@ -80,7 +80,7 @@ APP__SERVER_TEST___HANDLER_NAME => :app.server-test/handler-name
 
 ### 4. Arbitrary edn values
 
-Configs read from edn files, `project.clj`, or `build.boot` are read as edn and can be anything
+Configs from edn files, `project.clj`, or `build.boot` can be anything
 clojure can read, including custom reader tags. envars are first read as strings, and only
 read as edn if they don't conform to their spec as a string.
 
@@ -105,7 +105,7 @@ strings that look like numbers or other edn.
 
 Compound edn example:
 
-```
+```clj
 ;; ec2.helper
 
 (defenv ::regions (s/and set? (s/* string?)))
@@ -124,7 +124,7 @@ if the app should not send emails when run in certain environments it might be u
 some tests with `::send-email true` and others with `::send-email false` to test the underlying
 implementation.
 
-```
+```clj
 (defenv ::send-email boolean?)
 
 (defn test-payflow []
@@ -144,9 +144,9 @@ implementation.
 
 ### 6. Jar Support
 
-environ loads all the config vars once at startup. This is problematic when using uberjars
-since any `aot` namespaces will pick up the envars present at the moment of compilation, not
-runtime.
+environ loads all the configs when the namespace `environ.core` is read. This is problematic
+when using jars  since any `aot` namespaces will pick up the envars present at the moment of
+compilation, not runtime.
 
 For Jars in production, you can use standalone edn files and load them on startup:
 
@@ -164,7 +164,7 @@ For Jars in production, you can use standalone edn files and load them on startu
 and then start your jar with
 
 ```sh
-ENVIRON__CORE___FILE="prod/config.edn" \
+SCAR__CORE___FILE="prod/config.edn" \
 java -jar targe/app-standalone.jar
 ```
 
@@ -174,7 +174,7 @@ scar supports four config sources, resolved in the following order:
 
 1. A `.lein-env` file in the project directory
 2. A `.boot-env` file on the classpath
-3. A resource file passed with `ENVIRON__CORE__FILE`
+3. A resource file passed with `SCAR__CORE__FILE`
 4. envars
 
 The first two sources are set by the `lein-environ` and `boot-environ`
@@ -189,7 +189,7 @@ in the Leiningen project map. The `.boot-env` file is populated by the
 Include the following dependency in your `project.clj` file:
 
 ```clojure
-:dependencies [[environ "1.1.0"]]
+:dependencies [[scar "0.1.0"]]
 ```
 
 If you want to be able to draw settings from the Leiningen project
@@ -219,23 +219,26 @@ Often you'll need three different databases, one for development, one
 for testing, and one for production.
 
 Lets pull the database connection details from the key `:app.db/url`
-on the `environ.core/env` map.
+with the `scar.core/env` function:
 
 ```clojure
-;; app.db
-(require '[scar.core :as scar :refer [env defenv]])
+(ns app. db
+  (:require [scar.core :as scar :refer [env defenv]]))
 
+;; we'll need the key `:app.db/url` as a string on runtime.
 (defenv ::url string?)
 
+;; we only call (env ::url) inside functions and not in top level
 (defn get-connection []
   (connect! (env ::url)))
 
 (defn -main []
+  ;; we load all configs on startup
   (scar/init!)
   (start! (get-connection)))
 ```
 
-Do not use `(env ::url)` in the top level since that won't allow you to use jars.
+> Do not use `(env ::url)` in the top level since that won't allow you to use jars.
 
 The value of this key can be set in several different ways. The most
 common way during development is to use a local `profiles.clj` file in
@@ -278,7 +281,7 @@ APP__DB___URL=jdbc:postgres://localhost/prod \
 java -jar standalone.jar
 ```
 
-**Note**: Remember to load the configs by running `(scar.core/init!)` before calling `env`.
+> Remember to load the configs by running `(scar.core/init!)` before calling `env`.
 
 ## License
 
