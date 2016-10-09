@@ -1,4 +1,4 @@
-(ns environ.core
+(ns scar.core
   (:require [clojure.edn :as edn]
             [clojure.string :as str]
             [clojure.java.io :as io]

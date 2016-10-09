@@ -1,7 +1,7 @@
-(ns environ.core-test
+(ns scar.core-test
   (:require [clojure.test :refer :all]
             [clojure.java.io :as io]
-            [environ.core :as env :refer [env defenv with-env]]
+            [scar.core :as env :refer [env defenv with-env]]
             [clojure.spec :as s]))
 
 (deftest keywordize
