@@ -1,12 +1,19 @@
-# Environ
+# Scar
+
+> Long live the King!
+
+A poorly opinionated fork of environ.
 
 ## Rationale
 
 I've happily used [environ](http://github.com/weavejester/environ) for years and it provides
-a nice API to deal with config and environment variables. It is based on the
-[Twelve-Factor App's](https://12factor.net/config) recommendation on Environment Variables.
-Lately I've hit some problems that are hard to solve with environ and this fork addresses those.
-[XXX] is different from environ in the following ways:
+a nice API to deal with config variables. It is based on the
+[Twelve-Factor App's](https://12factor.net/config) for config variables and it boils down to
+"use environment variables". I will distinguish between "configs" (the variables we are using
+in the code, regardless of their source) and "envars" (Unix environment variables). You read
+configs from envars or from other sources, like a file or a config map in `project.clj`
+Lately I've hit some problems that don't fit with environ's decisions and this fork addresses
+those. Scar is different from environ in the following ways:
 
 1. Config checked into git
 2. Spec checking
@@ -17,104 +24,136 @@ Lately I've hit some problems that are hard to solve with environ and this fork 
 
 ### 1. Config checked into git
 
-We can start by distinguishing between config variables that you want to keep secret from those
-that you don't care. For example, your AWS API key vs the HTTP server's port. I don't recommend
-checking any API keys in git but I do want to keep as much as I can in there. Including the
-common deployment configs. See [Secrets] for how do we handle secrets.
+There are config variables that should remain secret (AWS API keys) and config variables that
+are unimportant (HTTP port). I want to keep as much as possible in git. To add secrets to Scar,
+you can do it with env vars (like in Environ) or with [env-secrets].
 
 For development and the repl you can put your envs in `project.clj` or `build.boot` just like
 with environ:
 
 ```clj
-project.clj
+;; project.clj
 {:dev {:app.server/port 80
        :app.db/url "postgres://username:password@host/database"}}
 ```
 
-For jars you can use standalone edn files (See Jar Support)
+For jars and multiple deploy environments you can use standalone edn resources and
+check them into git (See Jar Support).
 
 ### 2. Spec checking
 
-Each namespace defines specs for the  environment variables it will at run time with `defenv`.
-When the app is initialized, they are all checked, and an exception is thrown if any is
-missing or doesn't conform to the spec:
+Each namespace defines specs for the config variables it will at runtime with `defenv`.
+When the app is initialized, the config values are checked against the defined specs, and an
+exception is thrown if any is missing or doesn't conform to the spec:
 
-```
+```clj
 ;; resources/prod/config.edn
-{:app.server/port nil
+{:app.server/port "not-an-integer"
  :app.server/host "www.app.com"}
 
 ;; app.server
 (defenv
-  ::port int?
+  ::port integer?
   ::host string?)
-
-(defn start-server [host port]
-  ...)
 
 (defn -main []
   (env/init!)
-  (app.server/start! (env :app.server/host) (env :app.server/port)))
+  (start-server! (env :app.server/host) (env :app.server/port)))
 
 > (-main)
-=> Exception :app.server/port does not conform to spec int?
+=> ExceptionInfo The following envs didn't conform to their expected values:
+
+	val: "not-an-integer" fails spec: :app.server/port predicate: integer?
 ```
 
 ### 3. Fully qualified names for config vars
 
-Because there are could be many `:port`s or `:db-url`s. (But mostly because
-`clojure.spec` requires it).
+Because there could be many `:port`s or `:db-url`s. (But mostly because `clojure.spec`
+requires it). The limitation here is that envars are not namespaced. I chose
+the following scheme to get around the problem:
+
+```
+APP__SERVER___HTTP_PORT => :app.server/http-port
+
+APP__SERVER_TEST___HANDLER_NAME => :app.server-test/handler-name
+```
 
 ### 4. Arbitrary edn values
 
 Config vars read from edn files, `project.clj`, or `build.boot` are read as edn.
-Environment variables are first read as strings, and only read with `edn/read-string`
-if they don't conform to their spec.
+envars are first read as strings, and only read with `edn/read-string`
+if they don't conform to their spec as a string.
 
-Examples:
+Example:
 
-```
-(in-ns 'app.server)
+```clj
+;; app.server
+
 (defenv
-  ::http-port int?
+  ::http-port integer?
   ::zip string?)
 
-APP__SERVER__HTTP_PORT=3005    # (env :app.server/http-port) => 3005 as int
-APP__SERVER__HTTP_PORT="3005"  # (env :app.server/http-port) => 3005 as int
+APP__SERVER___HTTP_PORT=3005    # (env :app.server/http-port) => 3005 as int
+APP__SERVER___HTTP_PORT="3005"  # (env :app.server/http-port) => 3005 as int
 
-APP__SERVER__ZIP=94114         # (env :app.server/zip) => "94144" as string
-APP__SERVER__ZIP="94114"       # (env :app.server/zip) => "94144" as string
+APP__SERVER___ZIP=94114         # (env :app.server/zip) => "94144" as string
+APP__SERVER___ZIP="94114"       # (env :app.server/zip) => "94144" as string
 ```
 
-This prevents us from having to cast HTTP ports to `Integer.`.
+This prevents us from having to cast HTTP ports to `Integer.` but allows us to use
+strings that look like numbers.
+
+Compound edn example:
+
+```
+;; ec2.helper
+
+(defenv ::regions (s/and set? (s/* string?)))
+
+;; resources/prod/config.edn
+{:ec2.helper/regions #{"us-west1" "us-west2"}}
+
+;; or with envs
+EC2__HELPER___REGIONS="#{\"us-west2\" \"us-west1\"}"
+```
 
 ### 5. Temporary stubbing for testing
 
 During one test run (i.e. `lein test`) it might be interesting to test several values for some
-type of config variable. For example, if some environments should not call a certain API it
-might be useful to wrap some tests with `::call-api? false` or `::call-api? true` to test the
-underlying implementation.
+config variable. For example, if the app when run in certain environments should not send
+emails it might be useful to wrap some tests with `::send-email true` and others with
+`::send-email false` to test the underlying implementation.
 
 ```
-> (env ::port)
-;; => 443
+(env ::send-email) ;; => true
 
-> (with-env [::port 80]
-    (start-server (env ::port)))
-;; => 80
+(defn test-payflow []
+  (if (env ::send-email)
+    (send-email-to-customer!)
+    (log-payment!)))
+
+(with-env [::send-email false]
+  (test-payflow))
+;; no email was sent
 ```
 
 ### 6. Jar Support
 
 environ loads all the config vars once at startup. This is problematic when using uberjars
-since any `aot` namespaces (like `environ.core`)
+since any `aot` namespaces (like `environ.core`) will pick up the envars
+present at the moment of compilation, not runtime.
 
-For jars in production, you can use standalone edn files:
+For Jars in production, you can use standalone edn files and load them on startup:
 
 ```clj
 ;; resources/prod/config.edn
 {:app.server/port 80
  :app.db/url "postgres://username:password@host/database"}}
+
+;; app.server/core
+(defn -main []
+  (env/init!)
+  (start-server! (env ::port)))
 ```
 
 and then start your jar with
@@ -126,19 +165,15 @@ java -jar targe/app-standalone.jar
 
 ## Behavior
 
-Environ is a Clojure library for managing environment settings from a
-number of different sources. It works well for applications following
-the [12 Factor App](http://12factor.net/) pattern.
-
-Currently, Environ supports four sources, resolved in the following
+Currently, Scar supports four sources, resolved in the following
 order:
 
 1. A `.lein-env` file in the project directory
 2. A `.boot-env` file on the classpath
-3. Environment variables
-4. Java system properties
+3. A resource file passed with `ENVIRON__CORE__FILE`
+4. Environment variables
 
-The first two sources are set by the lein-environ and boot-environ
+The first two sources are set by the `lein-environ` and `boot-environ`
 plugins respectively, and should not be edited manually.
 
 The `.lein-env` file is populated with the content of the `:env` key
