@@ -58,6 +58,22 @@
           io/resource
           read-env-file))
 
+(defonce env-map (atom {}))
+
+(def ^:dynamic *temp-env* {})
+
+(defn validate! []
+  (when-let [errors (->> @env-specs
+                         (map #(when-let [error (validate-spec % (env %))]
+                                 {:key %
+                                  :value (env %)
+                                  :error error}))
+                         (remove nil?)
+                         seq)]
+    (let [msg (format "The following envs didn't conform to their expected values:\n\n\t%s\n"
+                      (str/join "\n\t" (map :error errors)))]
+      (throw (ex-info msg {:errors errors})))))
+
 ;; ======================================================================
 ;; API
 
@@ -73,27 +89,11 @@
                  (s/def ~k# ~s#)))
             (partition 2 specs))))
 
-(defonce env-map (atom {}))
-
-(def ^:dynamic *temp-env* {})
-
 (defn env
   ([k] (env k nil))
   ([k default] (or (get *temp-env* k)
                    (get @env-map k)
                    default)))
-
-(defn validate! []
-  (when-let [errors (->> @env-specs
-                         (map #(when-let [error (validate-spec % (env %))]
-                                 {:key %
-                                  :value (env %)
-                                  :error error}))
-                         (remove nil?)
-                         seq)]
-    (let [msg (format "The following envs didn't conform to their expected values:\n\n\t%s\n"
-                      (str/join "\n\t" (map :error errors)))]
-      (throw (ex-info msg {:errors errors})))))
 
 ;; TODO: add meta for source name for nice exception messages
 (defn load-env! [source]
@@ -106,7 +106,6 @@
                     (read-main-file)
                     (read-configs (System/getenv))
                     (read-configs (System/getProperties)))))
-
 
 (s/fdef with-env
   :args (s/cat :bindings (s/and vector? #(even? (count %))
