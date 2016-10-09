@@ -77,11 +77,8 @@
 ;; API
 
 (s/fdef defenv
-  :args (s/and #(even? (count %))
-               #(every? (fn [[k s]]
-                          (and (keyword? k)
-                               (or (s/spec? s) (s/regex? s) (keyword? s))))
-                        (partition 2 %))))
+  :args (s/and #((every-pred pos? even?) (count %))
+               #(every? keyword? (take-nth 2 %))))
 
 (defmacro defenv [& specs]
   `(do

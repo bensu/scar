@@ -1,12 +1,20 @@
 (ns environ.core-test
   (:require [clojure.test :refer :all]
             [clojure.java.io :as io]
-            [environ.core :as env :refer [env defenv with-env]]))
+            [environ.core :as env :refer [env defenv with-env]]
+            [clojure.spec :as s]))
 
 (deftest keywordize
   (are [x y] (= y (env/keywordize x))
     "ENVIRON__CORE_TEST___INT" ::int
     "ENVIRON__CORE_TEST___STRING" ::string))
+
+(deftest defenv-checks-args
+  (testing "defenv checks its arguments"
+    (is (thrown? Exception (macroexpand '(defenv))))
+    (is (thrown? Exception (macroexpand '(defenv ::a))))
+    (is (thrown? Exception (macroexpand '(defenv 1 ::a))))
+    (is (thrown? Exception (macroexpand '(defenv ::a ::a 1))))))
 
 (defenv
   ::int integer?
@@ -15,7 +23,7 @@
   ::keyword keyword?
   ::map map?
   ::vector vector?
-  ::set set?
+  ::set (s/and set? (s/* string?))
   ::uuid uuid?)
 
 (deftest load-env
