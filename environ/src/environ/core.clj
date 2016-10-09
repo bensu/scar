@@ -73,12 +73,15 @@
           io/resource
           read-env-file))
 
+;; ======================================================================
 ;; API
 
 (s/fdef defenv
-        :args (s/and #(even? (count %))
-                     #(every? keyword? (take-nth 2 %)))
-        )
+  :args (s/and #(even? (count %))
+               #(every? (fn [[k s]]
+                          (and (keyword? k)
+                               (or (s/spec? s) (s/regex? s) (keyword? s))))
+                        (partition 2 %))))
 
 (defmacro defenv [& specs]
   `(do
@@ -116,30 +119,12 @@
 
 
 (s/fdef with-env
-        :args (s/cat :bindings (s/and vector? #(even? (count %))
-                                      (s/* (s/or :keyword keyword? :value any?)))
-                     :body (s/* any?))
-        :ret any?)
+  :args (s/cat :bindings (s/and vector? #(even? (count %))
+                                (s/* (s/or :keyword keyword? :value any?)))
+               :body (s/* any?))
+  :ret any?)
 
 (defmacro with-env [bindings & body]
   `(binding [*temp-env* (merge *temp-env* ~(into {} (map vec (partition 2 bindings))))]
      (validate!)
      ~@body))
-
-(comment
-
-  ;; each ns declares what it needs
-  (defenv
-    ::port integer?
-    ::db string?)
-
-  ;; somewhere you say what it is
-  (def source-map {::port 3005})
-
-  ;; you initialized
-
-  (load-env! source-map)
-
-  ;; you use the values
-  (env ::port)
-  )
