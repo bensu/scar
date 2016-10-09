@@ -1,4 +1,4 @@
-# Scar
+# scar
 
 > Long live the King!
 
@@ -6,14 +6,14 @@ A poorly opinionated fork of environ.
 
 ## Rationale
 
-I've happily used [environ](http://github.com/weavejester/environ) for years and it provides
-a nice API to deal with config variables. It is based on the
-[Twelve-Factor App's](https://12factor.net/config) for config variables and it boils down to
-"use environment variables". I will distinguish between "configs" (the variables we are using
-in the code, regardless of their source) and "envars" (Unix environment variables). You read
-configs from envars or from other sources, like a file or a config map in `project.clj`
+[environ](http://github.com/weavejester/environ) provides a nice API to deal with config
+variables. It is based on the [Twelve-Factor App's](https://12factor.net/config) which
+recommends using environment variables to configure your app in different deployment
+environments. I will distinguish between "configs" (the variables we are using
+in the code, regardless of their source) and "envars" (Unix environment variables). Your app
+reads configs from envars or from other sources, like a file or a config map in `project.clj`
 Lately I've hit some problems that don't fit with environ's decisions and this fork addresses
-those. Scar is different from environ in the following ways:
+those. scar is different from environ in the following ways:
 
 1. Config checked into git
 2. Spec checking
@@ -24,9 +24,9 @@ those. Scar is different from environ in the following ways:
 
 ### 1. Config checked into git
 
-There are config variables that should remain secret (AWS API keys) and config variables that
-are unimportant (HTTP port). I want to keep as much as possible in git. To add secrets to Scar,
-you can do it with env vars (like in Environ) or with [env-secrets].
+There are config variables that you want to keep secret (AWS API keys) and config variables
+that can be public (HTTP port). I want to keep as much as possible in git. To add secrets to
+scar, you can do it with envars (like in Environ) or with [env-secrets].
 
 For development and the repl you can put your envs in `project.clj` or `build.boot` just like
 with environ:
@@ -42,9 +42,9 @@ check them into git (See Jar Support).
 
 ### 2. Spec checking
 
-Each namespace defines specs for the config variables it will at runtime with `defenv`.
+Each namespace defines specs for the config variables it will use at runtime with `defenv`.
 When the app is initialized, the config values are checked against the defined specs, and an
-exception is thrown if any is missing or doesn't conform to the spec:
+exception is thrown if any config is missing or doesn't conform to the spec:
 
 ```clj
 ;; resources/prod/config.edn
@@ -66,11 +66,11 @@ exception is thrown if any is missing or doesn't conform to the spec:
 	val: "not-an-integer" fails spec: :app.server/port predicate: integer?
 ```
 
-### 3. Fully qualified names for config vars
+### 3. Fully qualified names for configs
 
 Because there could be many `:port`s or `:db-url`s. (But mostly because `clojure.spec`
-requires it). The limitation here is that envars are not namespaced. I chose
-the following scheme to get around the problem:
+requires it). Requiring configs to be namespaced makes it harder to deal with envars which
+are not naturally namespaced. I chose to encode namespaces with the following scheme:
 
 ```
 APP__SERVER___HTTP_PORT => :app.server/http-port
@@ -80,9 +80,9 @@ APP__SERVER_TEST___HANDLER_NAME => :app.server-test/handler-name
 
 ### 4. Arbitrary edn values
 
-Config vars read from edn files, `project.clj`, or `build.boot` are read as edn.
-envars are first read as strings, and only read with `edn/read-string`
-if they don't conform to their spec as a string.
+Configs read from edn files, `project.clj`, or `build.boot` are read as edn and can be anything
+clojure can read, including custom reader tags. envars are first read as strings, and only
+read as edn if they don't conform to their spec as a string.
 
 Example:
 
@@ -100,8 +100,8 @@ APP__SERVER___ZIP=94114         # (env :app.server/zip) => "94144" as string
 APP__SERVER___ZIP="94114"       # (env :app.server/zip) => "94144" as string
 ```
 
-This prevents us from having to cast HTTP ports to `Integer.` but allows us to use
-strings that look like numbers.
+This prevents us from having to cast HTTP ports with `Integer.` and also allows us to use
+strings that look like numbers or other edn.
 
 Compound edn example:
 
@@ -113,35 +113,40 @@ Compound edn example:
 ;; resources/prod/config.edn
 {:ec2.helper/regions #{"us-west1" "us-west2"}}
 
-;; or with envs
+;; or with envars
 EC2__HELPER___REGIONS="#{\"us-west2\" \"us-west1\"}"
 ```
 
 ### 5. Temporary stubbing for testing
 
-During one test run (i.e. `lein test`) it might be interesting to test several values for some
-config variable. For example, if the app when run in certain environments should not send
-emails it might be useful to wrap some tests with `::send-email true` and others with
-`::send-email false` to test the underlying implementation.
+Some functions might need to be tested with different values for a certain config. For example,
+if the app should not send emails when run in certain environments it might be useful to wrap
+some tests with `::send-email true` and others with `::send-email false` to test the underlying
+implementation.
 
 ```
-(env ::send-email) ;; => true
+(defenv ::send-email boolean?)
 
 (defn test-payflow []
   (if (env ::send-email)
     (send-email-to-customer!)
     (log-payment!)))
 
+;; an email will be sent
+(with-env [::send-email true]
+  (test-payflow))
+
+;; no email will be sent
 (with-env [::send-email false]
   (test-payflow))
-;; no email was sent
+
 ```
 
 ### 6. Jar Support
 
 environ loads all the config vars once at startup. This is problematic when using uberjars
-since any `aot` namespaces (like `environ.core`) will pick up the envars
-present at the moment of compilation, not runtime.
+since any `aot` namespaces will pick up the envars present at the moment of compilation, not
+runtime.
 
 For Jars in production, you can use standalone edn files and load them on startup:
 
@@ -165,13 +170,12 @@ java -jar targe/app-standalone.jar
 
 ## Behavior
 
-Currently, Scar supports four sources, resolved in the following
-order:
+scar supports four config sources, resolved in the following order:
 
 1. A `.lein-env` file in the project directory
 2. A `.boot-env` file on the classpath
 3. A resource file passed with `ENVIRON__CORE__FILE`
-4. Environment variables
+4. envars
 
 The first two sources are set by the `lein-environ` and `boot-environ`
 plugins respectively, and should not be edited manually.
@@ -179,7 +183,6 @@ plugins respectively, and should not be edited manually.
 The `.lein-env` file is populated with the content of the `:env` key
 in the Leiningen project map. The `.boot-env` file is populated by the
 `environ.boot/environ` Boot task.
-
 
 ## Installation
 
@@ -215,15 +218,24 @@ Let's say you have an application that requires a database connection.
 Often you'll need three different databases, one for development, one
 for testing, and one for production.
 
-Lets pull the database connection details from the key `:database-url`
+Lets pull the database connection details from the key `:app.db/url`
 on the `environ.core/env` map.
 
 ```clojure
-(require '[environ.core :refer [env]])
+;; app.db
+(require '[scar.core :as scar :refer [env defenv]])
 
-(def database-url
-  (env :database-url))
+(defenv ::url string?)
+
+(defn get-connection []
+  (connect! (env ::url)))
+
+(defn -main []
+  (scar/init!)
+  (start! (get-connection)))
 ```
+
+Do not use `(env ::url)` in the top level since that won't allow you to use jars.
 
 The value of this key can be set in several different ways. The most
 common way during development is to use a local `profiles.clj` file in
@@ -232,65 +244,47 @@ the standard `project.clj` file, but can be kept out of version
 control and reserved for local development options.
 
 ```clojure
-{:dev  {:env {:database-url "jdbc:postgres://localhost/dev"}}
- :test {:env {:database-url "jdbc:postgres://localhost/test"}}}
+;; project.clj
+
+:profile {:dev  {:env {:app.db/url "jdbc:postgres://localhost/dev"}}
+          :test {:env {:app.db/url "jdbc:postgres://localhost/test"}}}
 ```
 
 In this case we add a database URL for the dev and test environments.
 This means that if you run `lein repl`, the dev database will be used,
 and if you run `lein test`, the test database will be used.
 
-Keywords with a `project` namespace are looked up in the project
-map. For example:
+For each production deployment, define an edn file under `resources/` with all the configs
+for that environment:
 
-```clojure
-{:env {:app-version :project/version}}
+```clj
+;; resources/prod/configs.edn
+{:app.db/url  "jdbc:postgres://localhost/prod"}
 ```
 
-This looks up the `:version` key in the Leiningen project map. You can
-view the full project map by using [lein-pprint][].
+and then run your Jar with:
 
-In the case of Boot, you have the full flexibility of tasks and build
-pipelines, meaning that all the following are valid:
-
-```clojure
-$ boot environ -e database-url=jdbc:postgres://localhost/dev repl
+```
+SCAR__CORE___FILE=prod/configs.edn java -jar standalone.jar
 ```
 
-```clojure
-(environ :env {:database-url "jdbc:postgres://localhost/dev"})
-```
+This has the advantage of using only *one* envar per deployment environment.
 
-The latter form can be included in custom pipelines and `task-options!'.
-
-The task also creates or updates a `.boot-env` file in the fileset.
-This is useful for tasks that create their own pods like
-[boot-test][], which won't see changes in the environ vars.
-
-When you deploy to a production environment, you can make use of
-environment variables, like so:
+Alternatively, to make quick tests or changes you could override that file with envars:
 
 ```bash
-DATABASE_URL=jdbc:postgres://localhost/prod java -jar standalone.jar
+SCAR__CORE___FILE=prod/configs.edn \
+APP__DB___URL=jdbc:postgres://localhost/prod \
+java -jar standalone.jar
 ```
 
-Or use Java system properties:
-
-```bash
-java -Ddatabase.url=jdbc:postgres://localhost/prod -jar standalone.jar
-```
-
-Note that Environ automatically lowercases keys, and replaces the
-characters "_" and "." with "-". The environment variable
-`DATABASE_URL` and the system property `database.url` are therefore
-both converted to the same keyword `:database-url`.
-
-[lein-pprint]: https://github.com/technomancy/leiningen/tree/master/lein-pprint
-[boot-test]:   https://github.com/adzerk-oss/boot-test
-
+**Note**: Remember to load the configs by running `(scar.core/init!)` before calling `env`.
 
 ## License
 
-Copyright © 2016 James Reeves
+Most of the credit goes to [James Reeves](https://github.com/weavejester) who wrote environ
+and an incredible number of other libraries. I just bolted new requirements on top of what helpewrote.
+
+Copyright © 2016 James Reeves & Sebastian Bensusan
 
 Distributed under the Eclipse Public License, the same as Clojure.
