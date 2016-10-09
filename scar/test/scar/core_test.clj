@@ -11,10 +11,10 @@
 
 (deftest defenv-checks-args
   (testing "defenv checks its arguments"
-    (is (thrown? Exception (macroexpand '(defenv))))
-    (is (thrown? Exception (macroexpand '(defenv ::a))))
-    (is (thrown? Exception (macroexpand '(defenv 1 ::a))))
-    (is (thrown? Exception (macroexpand '(defenv ::a ::a 1))))))
+    (is (thrown? Exception (macroexpand `(defenv))))
+    (is (thrown? Exception (macroexpand `(defenv ::a))))
+    (is (thrown? Exception (macroexpand `(defenv 1 ::a))))
+    (is (thrown? Exception (macroexpand `(defenv ::a ::a 1))))))
 
 (defenv
   ::int integer?

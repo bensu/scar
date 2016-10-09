@@ -4,14 +4,6 @@
             [clojure.java.io :as io]
             [clojure.spec :as s]))
 
-(defn- keywordize [s]
-  (-> (str/lower-case s)
-      (str/replace "_" "-")
-      (str/replace "." "-")
-      (keyword)))
-
-(defonce env-specs (atom #{}))
-
 (defn- maybe-keyword [s]
   (try
     (keyword s)
@@ -40,6 +32,8 @@
   (when (s/invalid? (s/conform k v))
     (s/explain-str k v)))
 
+(defonce env-specs (atom #{}))
+
 (defn- read-configs [source]
   (->> source
        (map (fn [[k v]]
@@ -62,18 +56,6 @@
 
 (def ^:dynamic *temp-env* {})
 
-(defn validate! []
-  (when-let [errors (->> @env-specs
-                         (map #(when-let [error (validate-spec % (env %))]
-                                 {:key %
-                                  :value (env %)
-                                  :error error}))
-                         (remove nil?)
-                         seq)]
-    (let [msg (format "The following envs didn't conform to their expected values:\n\n\t%s\n"
-                      (str/join "\n\t" (map :error errors)))]
-      (throw (ex-info msg {:errors errors})))))
-
 ;; ======================================================================
 ;; API
 
@@ -94,6 +76,18 @@
   ([k default] (or (get *temp-env* k)
                    (get @env-map k)
                    default)))
+
+(defn validate! []
+  (when-let [errors (->> @env-specs
+                         (map #(when-let [error (validate-spec % (env %))]
+                                 {:key %
+                                  :value (env %)
+                                  :error error}))
+                         (remove nil?)
+                         seq)]
+    (let [msg (format "The following envs didn't conform to their expected values:\n\n\t%s\n"
+                      (str/join "\n\t" (map :error errors)))]
+      (throw (ex-info msg {:errors errors})))))
 
 ;; TODO: add meta for source name for nice exception messages
 (defn load-env! [source]
