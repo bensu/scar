@@ -7,7 +7,10 @@
 (deftest keywordize
   (are [x y] (= y (env/keywordize x))
     "SCAR__CORE_TEST___INT" ::int
-    "SCAR__CORE_TEST___STRING" ::string))
+    "SCAR__CORE_TEST___STRING" ::string)
+  (are [x y] (= y (env/->envar x))
+    ::int "SCAR__CORE_TEST___INT"
+    ::string "SCAR__CORE_TEST___STRING"))
 
 (deftest defenv-checks-args
   (testing "defenv checks its arguments"
@@ -60,12 +63,12 @@
   (testing "spec checking throws useful errors that include the source"
     (testing "when using init!"
       (defenv ::int set?)
-      (is (thrown-with-msg? Exception #"int" (env/init!)))
+      (is (thrown-with-msg? Exception #"int(.|\n)*SCAR__CORE_TEST___INT" (env/init!)))
       ;; restore defenv
       (defenv ::int integer?)
       (env/init!))
     (testing "when using with-env"
-      (is (thrown-with-msg? Exception #"integer(.|\n)*string"
+      (is (thrown-with-msg? Exception #"integer(.|\n)*string(.|\n)*with-env"
                             (with-env [::string 1
                                        ::int "a"]
                               (env ::string)))))))
