@@ -4,6 +4,114 @@
 
 A poorly opinionated fork of environ.
 
+## Usage
+
+`scar` is similar to `environ` but with two extra things: `defenv` and `init!`.
+
+Let's say you have an application that requires a database connection and a web server.
+Often you'll need three different databases, one for development, one
+for testing, and one for production. You will also need to use different HTTP ports and
+decide which environments will use SSL and which won't.
+
+Lets pull the database connection details from the key `:app.db/url`
+with the `scar.core/env` function:
+
+For each namespace that requires an env, first define its name and a spec for it and then use
+it. For the database:
+
+```clojure
+(ns app. db
+  (:require [scar.core :as scar :refer [env defenv]]))
+
+(defenv ::url string?) ;; we'll need the key `:app.db/url` as a string on runtime.
+
+;; we only call (env ::url) inside functions and not in top level
+(defn get-connection []
+  (connect! (env ::url)))
+```
+
+For the web server:
+
+```clojure
+(ns app.server
+  (:require [scar.core :as scar :refer [env defenv]]))
+
+(defenv
+  ::http-port int?
+  ::ssl? boolean?)
+
+(defn -main []
+  ;; first we load all configs on startup
+  (scar/init!)
+  ;; we now know that all configs are present and conform to their specs
+  (if (env ::ssl?)
+    (start-ssl-server! (env ::htt-port)  (get-connection))
+    (start-sever! (env ::htt-port) (get-connection))))
+```
+
+> Do not use `(env ::url)` in the top level since that won't allow you to use jars.
+
+The value of `(env ::url)` can be set in several different ways. For development and testing
+you can use `:profile`s in your `project.clj`:
+
+```clojure
+;; project.clj
+
+:profile {:dev  {:env {:app.db/url "jdbc:postgres://localhost/dev"
+                       :app.server/http-port 3000
+                       :app.server/ssl? false}}
+          :test {:env {:app.db/url "jdbc:postgres://localhost/test"
+                       :app.server/http-port 3001
+                       :app.server/ssl? false}}}
+```
+
+> Notice that values like `:app.server/http-port` or `:app.server/ssl?` can be any edn values,
+> not just strings.
+
+In this case we add a database URL for the dev and test environments.
+This means that if you run `lein repl`, the dev database will be used,
+and if you run `lein test`, the test database will be used.
+
+For each production deployment, define an edn file under `resources/` with all the configs
+for that environment:
+
+```clj
+;; resources/prod/configs.edn
+{:app.db/url  "jdbc:postgres://localhost/prod"
+ :app.server/http-port 443
+ :app.server/ssl? true}
+```
+
+and then run your Jar with:
+
+```
+SCAR__CORE___FILE=prod/configs.edn java -jar standalone.jar
+```
+
+This has the advantage of using only *one* envar per deployment environment.
+
+Alternatively, to make quick tests or changes without changing the jar you could override
+the values in the file with envars:
+
+```bash
+SCAR__CORE___FILE=prod/configs.edn \
+APP__DB___URL=jdbc:postgres://localhost/prod \
+java -jar standalone.jar
+```
+
+In tests or in the REPL, you could also use `with-env` when you want to make a local change:
+
+```clojure
+(env ::send-emails?) ;; => true
+
+(with-env [::send-emails? false]
+  (send-email!) ;; other logic is run, but emails are not sent
+  (env ::send-emails?))
+;; => false
+```
+
+> Remember to load the configs by running `(scar.core/init!)` before calling `env`.
+
 ## Rationale
 
 [environ](http://github.com/weavejester/environ) provides a nice API to deal with config
@@ -211,77 +319,6 @@ Then require the environ boot task.
 ```clojure
 (require '[environ.boot :refer [environ]])
 ```
-
-## Usage
-
-Let's say you have an application that requires a database connection.
-Often you'll need three different databases, one for development, one
-for testing, and one for production.
-
-Lets pull the database connection details from the key `:app.db/url`
-with the `scar.core/env` function:
-
-```clojure
-(ns app. db
-  (:require [scar.core :as scar :refer [env defenv]]))
-
-;; we'll need the key `:app.db/url` as a string on runtime.
-(defenv ::url string?)
-
-;; we only call (env ::url) inside functions and not in top level
-(defn get-connection []
-  (connect! (env ::url)))
-
-(defn -main []
-  ;; we load all configs on startup
-  (scar/init!)
-  (start! (get-connection)))
-```
-
-> Do not use `(env ::url)` in the top level since that won't allow you to use jars.
-
-The value of this key can be set in several different ways. The most
-common way during development is to use a local `profiles.clj` file in
-your project directory. This file contained a map that is merged with
-the standard `project.clj` file, but can be kept out of version
-control and reserved for local development options.
-
-```clojure
-;; project.clj
-
-:profile {:dev  {:env {:app.db/url "jdbc:postgres://localhost/dev"}}
-          :test {:env {:app.db/url "jdbc:postgres://localhost/test"}}}
-```
-
-In this case we add a database URL for the dev and test environments.
-This means that if you run `lein repl`, the dev database will be used,
-and if you run `lein test`, the test database will be used.
-
-For each production deployment, define an edn file under `resources/` with all the configs
-for that environment:
-
-```clj
-;; resources/prod/configs.edn
-{:app.db/url  "jdbc:postgres://localhost/prod"}
-```
-
-and then run your Jar with:
-
-```
-SCAR__CORE___FILE=prod/configs.edn java -jar standalone.jar
-```
-
-This has the advantage of using only *one* envar per deployment environment.
-
-Alternatively, to make quick tests or changes you could override that file with envars:
-
-```bash
-SCAR__CORE___FILE=prod/configs.edn \
-APP__DB___URL=jdbc:postgres://localhost/prod \
-java -jar standalone.jar
-```
-
-> Remember to load the configs by running `(scar.core/init!)` before calling `env`.
 
 ## License
 

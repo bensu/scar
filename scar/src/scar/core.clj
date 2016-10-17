@@ -200,8 +200,7 @@
 
   Ex:
 
-  (env ::send-emails?)
-  ;; => true
+  (env ::send-emails?) ;; => true
 
   (with-env [::send-emails? false]
     (test-email-features) ;; test suite is run but no emails are sent
