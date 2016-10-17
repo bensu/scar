@@ -66,6 +66,10 @@
           io/resource
           read-env-file))
 
+;; ======================================================================
+;; State
+;; TODO: collapse state and sources into one atom/var
+
 (defonce env-map (atom {}))
 
 (defonce env-sources (atom {}))
@@ -101,7 +105,23 @@
   :args (s/and #((every-pred pos? even?) (count %))
                #(every? keyword? (take-nth 2 %))))
 
-(defmacro defenv [& specs]
+(defmacro defenv
+  "Declares that a certain config will be needed at runtime with the spec it should adhere to.
+  Takes either one or multiple (keyword, spec) pairs.
+
+  Ex:
+
+  (defenv :app.server/http-port int?)
+
+  ;; is equivalent to:
+  (s/def :app.server/http-port int?)
+  (env/require! :app.server/http-port)
+
+  ;; multiple specs
+  (defenv
+    :app.server/domain string?
+    :app.server/ssl? boolean?)"
+  [& specs]
   `(do
      ~@(map (fn [[k# s#]]
               `(do
@@ -109,13 +129,27 @@
                  (require! ~k#)))
             (partition 2 specs))))
 
+;; TODO: check at compile time if the keyword was already registered
 (defn env
+  "Retrieves one keyword from the environment. Should be called after init!
+
+  Ex:
+
+  (env :app.server/http-port)
+  ;; => 3000
+
+  (env :app.server/ssl?)
+  ;; => true"
+  ([] (merge @env-map *temp-env*))
   ([k] (env k nil))
   ([k default] (or (get *temp-env* k)
                    (get @env-map k)
                    default)))
 
-(defn validate! []
+(defn validate!
+  "Checks that all required! configs are present and conform to their schemas.
+  Throws otherwise. "
+  []
   (when-let [errors (->> @env-specs
                          (map #(when-let [error (validate-spec % (env %))]
                                  {:key %
@@ -134,11 +168,20 @@
                            (str/join "\n\t")))]
       (throw (ex-info msg {:errors errors})))))
 
-(defn add-source! [source-name configs]
+(defn add-source!
+  "Initializes a new source of configs
+
+  (add-source! \"special-file\" (edn/read-string (slurp (io/resource \"special-file.ed\"))))"
+  [source-name configs]
   (swap! env-sources #(merge % (into {} (map (fn [[k _]] [k source-name]) configs))))
   (swap! env-map #(merge % configs)))
 
-(defn init! []
+(defn init!
+  "Initializes all the known config sources and checks that all the required configs are
+  present and conform to their respective specs. See require! and defenv
+
+  Should be called before any use of scar.core/env"
+  []
   (add-source! ".lein-env" (read-env-file ".lein-env"))
   (add-source! ".boot-env" (read-env-file (io/resource ".boot-env")))
   (add-source! (main-file-name) (read-main-file))
@@ -152,7 +195,19 @@
                :body (s/* any?))
   :ret any?)
 
-(defmacro with-env [bindings & body]
+(defmacro with-env
+  "Changes the value of one or more configs for its body in a thread local manner.
+
+  Ex:
+
+  (env ::send-emails?)
+  ;; => true
+
+  (with-env [::send-emails? false]
+    (test-email-features) ;; test suite is run but no emails are sent
+    (env ::send-emails?))
+  ;; => false"
+  [bindings & body]
   `(let [new-env# ~(into {} (map vec (partition 2 bindings)))
          new-keys# (keys new-env#)]
      (binding [*temp-env* (merge *temp-env* new-env#)
